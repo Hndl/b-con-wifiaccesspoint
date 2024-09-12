@@ -41,7 +41,8 @@ DNSServer dnsServer;
 IPAddress ipAddress (172, 0, 0, 1);
 bool      sd_ok     = false;
 bool      wifi_ok   = false;
-
+bool      pwd_file_ok = true;
+bool      ldr_file_ok = true;
 
 unsigned long currentTime = millis();
 unsigned long previousTime = 0; 
@@ -95,10 +96,11 @@ String getClientIPAddr() {
 }
 
 String signOnPage() {
-  return header("") + "<div></ol></div><div><form action=/wifipwd method=post><label>WiFi password:</label>"+
+  return header("") + "<div></ol></div><div><form action=/wifipwd method=post><label>WiFi password"+(!pwd_file_ok?"*":"")+":</label>"+
     "<input type=password name=pwd></input><input type=submit value=Start></form></div>" + footer();
 }
 String getPassword(String f){
+  pwd_file_ok = false;
   File flpwd = SD.open(f); 
   if (!flpwd) {
 #ifdef DEBUG
@@ -133,6 +135,7 @@ String getPassword(String f){
             Serial.print("used file:");
             Serial.print(f);
 #endif 
+  pwd_file_ok = true;
   return record;
 }
 
@@ -331,6 +334,7 @@ String renderLeadBoardHtml( String f , String token) {
   Serial.print("opening file:");
   Serial.println(f);
 #endif    
+  ldr_file_ok = true;
   File flPlayer = SD.open(f);  ///www/players.txt
   String html = "<div>";
   if (flPlayer) 
@@ -430,7 +434,8 @@ String renderLeadBoardHtml( String f , String token) {
    } 
    else 
    {
-    html = "failure to render player table. file:" + f;
+    html = "failure to render player table. file:" + f + " check the SD card.";
+    ldr_file_ok = false;
    }// end if: player file.available.
     
    html += "</div>";
@@ -531,7 +536,7 @@ void off_led( ) {
 void loop(){
  
   
-  if ( !sd_ok || !wifi_ok ) {
+  if ( !sd_ok || !wifi_ok  ) {
     Serial.println("Initialization Failed..."); 
     blink_led(1000);
     blink_led(1000);
@@ -539,6 +544,10 @@ void loop(){
     blink_led(800);
     return;
   }
+  
+  if(!ldr_file_ok) // Blink the LED on 5sec / 5sec
+    blink_led(10000);
+  
   on_led();
   dnsServer.processNextRequest();
   webServer.handleClient();

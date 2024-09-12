@@ -5,14 +5,15 @@
 #include <SPI.h>
 #include <SD.h> 
 
-#define TITLE     "Leader Board"
 
-#define SUBTITLE "Beacon"
+
+#define TITLE "Beacon"
 #define xDEBUG     false
 #define SD_HNDL   2
 #define LED 16
 
 const char* DEFAULT_SSID      = "Beacon-Access-Point";
+const char* SUBTITLE          = "Leader Board";
 const char* DEFAULT_PASSWORD  = "123456789";
 const char* DEFAULT_IPADDR    = "192.168.4.1";
 const char* DEFAULT_MODE      = "AP";
@@ -45,6 +46,18 @@ bool      wifi_ok   = false;
 unsigned long currentTime = millis();
 unsigned long previousTime = 0; 
 
+String generateToken() {
+  return (String(millis()));
+}
+bool isTokenValid( ) {
+  
+  return ((String)getTokenParam()).length() > 0;
+}
+
+String getTokenParam(){
+  return input("token");
+}
+
 String header(String t) {
   String a = "";
   String CSS = "article { background: #f2f2f2; padding: 1.3em; }" 
@@ -73,11 +86,16 @@ String header(String t) {
     "<meta name=viewport content=\"width=device-width,initial-scale=1\">"
     "<style>" + CSS + "</style>"
     "<meta charset=\"UTF-8\"></head>"
-    "<body><nav><b>" + a + "</b> " + SUBTITLE + "</nav><div><h1>" + t + "</h1></div><div>";
+    "<body><nav><b>" + TITLE + "</b> " + getClientIPAddr() + "</nav><div><h1>" + t + "</h1></div><div>";
   return h; }
 
+String getClientIPAddr() {
+  IPAddress clientIPAddr = ((WiFiClient)webServer.client()).remoteIP();
+  return clientIPAddr.toString();
+}
+
 String signOnPage() {
-  return header(TITLE) + "<div></ol></div><div><form action=/wifipwd method=post><label>WiFi password:</label>"+
+  return header("") + "<div></ol></div><div><form action=/wifipwd method=post><label>WiFi password:</label>"+
     "<input type=password name=pwd></input><input type=submit value=Start></form></div>" + footer();
 }
 String getPassword(String f){
@@ -118,8 +136,9 @@ String getPassword(String f){
   return record;
 }
 
-String leadboardPage() {
-  return header(TITLE) + renderLeadBoardHtml("/www/players.txt") + footer();
+String leadboardPage(String token) {
+  
+  return header(SUBTITLE) + renderLeadBoardHtml("/www/players.txt",token.length()==0?generateToken():token) + footer();
 }
 
 bool split(SimpleVector<String> &MsgAry, String MsgStr, char delim) {
@@ -156,7 +175,7 @@ String input(String name) {
 String verifiyWifiPwd() {
    String pwd = input("pwd");
    if (pwd == getPassword("/net/pwd.cfg" ))
-    return leadboardPage();
+    return leadboardPage(""); //forces new token to be generated.
    else
     return signOnPage();
   
@@ -307,7 +326,7 @@ void updateScore(String f) {
   
 }
 
-String renderLeadBoardHtml( String f ) {
+String renderLeadBoardHtml( String f , String token) {
 #ifdef DEBUG
   Serial.print("opening file:");
   Serial.println(f);
@@ -384,8 +403,8 @@ String renderLeadBoardHtml( String f ) {
             html+="<th></th></thead></tr><tbody>";
           else 
           {
-            html+= "<td><a href='/api/1.0/adjustscore?id="+ idFieldValue + "&by=1' class='buttonPlus'>+</a>";
-            html+= "<a href='/api/1.0/adjustscore?id="+ idFieldValue + "&by=-1' class='buttonMinus'>-</a></td>";
+            html+= "<td><a href='/api/1.0/adjustscore?id="+ idFieldValue + "&by=1&token="+ token +"' class='buttonPlus'>+</a>";
+            html+= "<a href='/api/1.0/adjustscore?id="+ idFieldValue + "&by=-1&token="+token+"' class='buttonMinus'>-</a></td>";
             html+="</tr>";  
           }
           record="";
@@ -441,12 +460,20 @@ bool wifi_accesspoint_init(){
 
   Serial.println("Initialization: Routes");
   
-  webServer.on("/",[]()                   { reportURI(webServer.uri(),"0");webServer.send(HTTP_CODE, "text/html", signOnPage());  });
-  webServer.on("/wifipwd",[]()            { reportURI(webServer.uri(),"1");webServer.send(HTTP_CODE, "text/html", verifiyWifiPwd());  });
-  webServer.on("/api/1.0/adjustscore",[](){ reportURI(webServer.uri(),"2"); updateScore("");webServer.send(HTTP_CODE, "text/html",leadboardPage());  });
-  webServer.on("/generate_204",[]()       { reportURI(webServer.uri(),"3");webServer.send(HTTP_CODE, "text/html", signOnPage());  });
-  webServer.on("/hotspot-detect.html",[](){ reportURI(webServer.uri(),"3");webServer.send(HTTP_CODE, "text/html", signOnPage());  });
-  webServer.onNotFound([]()               { reportURI(webServer.uri(),"4");webServer.send(HTTP_CODE, "text/html", signOnPage());     });
+  webServer.on("/",[]()                   { on_led();reportURI(webServer.uri(),"0");webServer.send(HTTP_CODE, "text/html", signOnPage());     off_led(); });
+  webServer.on("/wifipwd",[]()            { on_led();reportURI(webServer.uri(),"1");webServer.send(HTTP_CODE, "text/html", verifiyWifiPwd()); off_led();  });
+  webServer.on("/api/1.0/adjustscore",[](){ 
+                                            on_led();
+                                            reportURI(webServer.uri(),"2"); 
+                                            if(isTokenValid())  
+                                              updateScore("");
+                                            
+                                            webServer.send(HTTP_CODE, "text/html",isTokenValid()?leadboardPage(getTokenParam()):signOnPage());  
+                                            off_led();
+                                           });
+  webServer.on("/generate_204",[]()       { on_led();reportURI(webServer.uri(),"3");webServer.send(HTTP_CODE, "text/html", signOnPage()); off_led(); });
+  webServer.on("/hotspot-detect.html",[](){ on_led();reportURI(webServer.uri(),"3");webServer.send(HTTP_CODE, "text/html", signOnPage()); off_led(); });
+  webServer.onNotFound([]()               { on_led();reportURI(webServer.uri(),"4");webServer.send(HTTP_CODE, "text/html", signOnPage()); off_led(); });
 
   webServer.begin();
   return true;
@@ -515,9 +542,6 @@ void loop(){
   on_led();
   dnsServer.processNextRequest();
   webServer.handleClient();
-  
-  
-
-  
+  on_led();
   
 }

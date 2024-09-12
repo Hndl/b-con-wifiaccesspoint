@@ -1,0 +1,6 @@
+id,Name,Score,Team
+01,James,145, Avg Joes
+02,Bill b,225, Above Avg
+03,Bobs  g,918, Bobs Bits
+04,Groat,1101, I AM
+05,Star Lord,12, Me Me ME
